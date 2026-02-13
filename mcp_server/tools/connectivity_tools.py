@@ -873,3 +873,268 @@ async def list_wires(
             "error": "INTERNAL_ERROR",
             "message": f"Unexpected error listing wires: {str(e)}",
         }
+
+
+async def list_bus_wires(
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    List all bus wires in the current schematic.
+
+    Returns all bus wires (not regular wires) with their endpoints, length, orientation, and UUID.
+    Bus wires are thicker lines that represent groups of related signals (e.g., data buses).
+
+    Args:
+        ctx: MCP context for progress reporting (optional)
+
+    Returns:
+        Dictionary with success status and list of bus wires, or error information
+
+    Examples:
+        >>> result = await list_bus_wires()
+        >>> print(f"Found {result['count']} bus wires")
+        >>> for wire in result['bus_wires']:
+        ...     print(f"Bus {wire['uuid']}: ({wire['start']['x']}, {wire['start']['y']}) -> ({wire['end']['x']}, {wire['end']['y']})")
+    """
+    logger.info("[MCP] list_bus_wires called")
+
+    if ctx:
+        await ctx.report_progress(0, 100, "Listing all bus wires")
+
+    # Check if schematic is loaded
+    schematic = get_current_schematic()
+    if schematic is None:
+        logger.error("[MCP] No schematic loaded")
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    try:
+        if ctx:
+            await ctx.report_progress(50, 100, "Retrieving bus wires")
+
+        # Get all wires and filter for bus wires
+        all_wires = list(schematic.wires)
+        from kicad_sch_api.core.types import WireType
+        bus_wires = [w for w in all_wires if w.wire_type == WireType.BUS]
+
+        if ctx:
+            await ctx.report_progress(75, 100, f"Converting {len(bus_wires)} bus wires")
+
+        # Convert to output format
+        bus_wire_list = []
+        for wire in bus_wires:
+            wire_data = {
+                "uuid": str(wire.uuid),
+                "start": {"x": wire.start.x, "y": wire.start.y},
+                "end": {"x": wire.end.x, "y": wire.end.y},
+                "length": wire.length,
+                "is_horizontal": wire.is_horizontal(),
+                "is_vertical": wire.is_vertical(),
+                "stroke_width": wire.stroke_width if hasattr(wire, 'stroke_width') else None,
+            }
+            bus_wire_list.append(wire_data)
+
+        if ctx:
+            await ctx.report_progress(100, 100, f"Complete: {len(bus_wires)} bus wires")
+
+        logger.info(f"[MCP] Listed {len(bus_wires)} bus wires")
+        return {
+            "success": True,
+            "count": len(bus_wires),
+            "bus_wires": bus_wire_list,
+        }
+
+    except Exception as e:
+        logger.error(f"[MCP] Unexpected error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "INTERNAL_ERROR",
+            "message": f"Unexpected error listing bus wires: {str(e)}",
+        }
+
+
+async def list_bus_entries(
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    List all bus entries in the current schematic.
+
+    Returns all bus entry points with their position, size, rotation, and UUID.
+    Bus entries connect individual wires to bus wires, showing where signals
+    branch off from or connect to a data bus.
+
+    Args:
+        ctx: MCP context for progress reporting (optional)
+
+    Returns:
+        Dictionary with success status and list of bus entries, or error information
+
+    Examples:
+        >>> result = await list_bus_entries()
+        >>> print(f"Found {result['count']} bus entries")
+        >>> for entry in result['bus_entries']:
+        ...     print(f"Entry {entry['uuid']}: pos=({entry['position']['x']}, {entry['position']['y']}) rotation={entry['rotation']}°")
+    """
+    logger.info("[MCP] list_bus_entries called")
+
+    if ctx:
+        await ctx.report_progress(0, 100, "Listing all bus entries")
+
+    # Check if schematic is loaded
+    schematic = get_current_schematic()
+    if schematic is None:
+        logger.error("[MCP] No schematic loaded")
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    try:
+        if ctx:
+            await ctx.report_progress(50, 100, "Retrieving bus entries")
+
+        # Get all bus entries
+        bus_entries = list(schematic.bus_entries)
+
+        if ctx:
+            await ctx.report_progress(75, 100, f"Converting {len(bus_entries)} bus entries")
+
+        # Convert to output format
+        bus_entry_list = []
+        for entry in bus_entries:
+            entry_data = {
+                "uuid": str(entry.uuid),
+                "position": {"x": entry.position.x, "y": entry.position.y},
+                "size": {"x": entry.size.x, "y": entry.size.y} if entry.size else {"x": 2.54, "y": 2.54},
+                "rotation": entry.rotation,
+                "stroke_width": entry.stroke_width if hasattr(entry, 'stroke_width') else 0.0,
+                "stroke_type": entry.stroke_type if hasattr(entry, 'stroke_type') else "default",
+            }
+            bus_entry_list.append(entry_data)
+
+        if ctx:
+            await ctx.report_progress(100, 100, f"Complete: {len(bus_entries)} bus entries")
+
+        logger.info(f"[MCP] Listed {len(bus_entries)} bus entries")
+        return {
+            "success": True,
+            "count": len(bus_entries),
+            "bus_entries": bus_entry_list,
+        }
+
+    except Exception as e:
+        logger.error(f"[MCP] Unexpected error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "INTERNAL_ERROR",
+            "message": f"Unexpected error listing bus entries: {str(e)}",
+        }
+
+
+async def list_netlist(
+    hierarchical: bool = True,
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    List all electrical nets (connectivity) in the current schematic.
+
+    Performs comprehensive connectivity analysis to trace connections through:
+    - Direct wire-to-pin connections
+    - Junction points connecting multiple wires
+    - Labels connecting separated wire segments
+    - Global labels (cross-schematic connections)
+    - Hierarchical labels (parent-child sheet connections)
+    - Power symbols (implicit global connections)
+
+    Returns all nets with their names and connected component pins.
+
+    Args:
+        hierarchical: Include hierarchical connections (default: True)
+        ctx: MCP context for progress reporting (optional)
+
+    Returns:
+        Dictionary with success status and list of nets with connectivity, or error information
+
+    Examples:
+        >>> result = await list_netlist()
+        >>> print(f"Found {result['count']} nets")
+        >>> for net in result['nets']:
+        ...     print(f"Net '{net['name']}': {len(net['pins'])} connections")
+        ...     for pin in net['pins']:
+        ...         print(f"  {pin['reference']}.{pin['pin']}")
+    """
+    logger.info(f"[MCP] list_netlist called (hierarchical={hierarchical})")
+
+    if ctx:
+        await ctx.report_progress(0, 100, "Starting connectivity analysis")
+
+    # Check if schematic is loaded
+    schematic = get_current_schematic()
+    if schematic is None:
+        logger.error("[MCP] No schematic loaded")
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    try:
+        if ctx:
+            await ctx.report_progress(25, 100, "Analyzing connectivity")
+
+        # Import ConnectivityAnalyzer
+        from kicad_sch_api.core.connectivity import ConnectivityAnalyzer
+
+        # Create analyzer and run analysis
+        analyzer = ConnectivityAnalyzer()
+        nets = analyzer.analyze(schematic, hierarchical=hierarchical)
+
+        if ctx:
+            await ctx.report_progress(75, 100, f"Processing {len(nets)} nets")
+
+        # Convert to output format
+        net_list = []
+        for net in nets:
+            # Convert pins from PinConnection objects to dicts
+            pins = []
+            for pin in net.pins:
+                pins.append({
+                    "reference": pin.reference,
+                    "pin": pin.pin_number,
+                    "position": {"x": pin.position.x, "y": pin.position.y},
+                })
+
+            net_data = {
+                "name": net.name if net.name else f"Net-{len(net_list) + 1}",
+                "pins": pins,
+                "pin_count": len(pins),
+                "wire_count": len(net.wires),
+                "junction_count": len(net.junctions),
+                "label_count": len(net.labels),
+            }
+            net_list.append(net_data)
+
+        # Sort by net name for consistent output
+        net_list.sort(key=lambda x: x["name"])
+
+        if ctx:
+            await ctx.report_progress(100, 100, f"Complete: {len(nets)} nets")
+
+        logger.info(f"[MCP] Listed {len(nets)} nets")
+        return {
+            "success": True,
+            "count": len(nets),
+            "nets": net_list,
+        }
+
+    except Exception as e:
+        logger.error(f"[MCP] Unexpected error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "INTERNAL_ERROR",
+            "message": f"Unexpected error analyzing connectivity: {str(e)}",
+        }

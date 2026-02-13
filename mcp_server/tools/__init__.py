@@ -10,6 +10,9 @@ from mcp_server.tools.connectivity_tools import (
     add_label,
     add_wire,
     connect_components,
+    list_bus_entries,
+    list_bus_wires,
+    list_netlist,
     list_wires,
 )
 from mcp_server.tools.pin_discovery import (
@@ -31,4 +34,7 @@ __all__ = [
     "add_junction",
     "connect_components",
     "list_wires",
+    "list_bus_wires",
+    "list_bus_entries",
+    "list_netlist",
 ]

@@ -27,6 +27,9 @@ from mcp_server.tools.connectivity_tools import (
     add_label,
     add_wire,
     connect_components,
+    list_bus_entries,
+    list_bus_wires,
+    list_netlist,
     list_wires,
 )
 from mcp_server.tools.consolidated_tools import (
@@ -320,10 +323,13 @@ mcp.tool()(list_wires)
 mcp.tool()(add_label)
 mcp.tool()(add_junction)
 mcp.tool()(connect_components)
+mcp.tool()(list_netlist)
 
 # Register bus tools
 mcp.tool()(add_bus_wire)
+mcp.tool()(list_bus_wires)
 mcp.tool()(add_bus_entry)
+mcp.tool()(list_bus_entries)
 mcp.tool()(add_bus_label)
 
 
