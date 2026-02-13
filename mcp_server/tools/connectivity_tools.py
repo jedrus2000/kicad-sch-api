@@ -1138,3 +1138,235 @@ async def list_netlist(
             "error": "INTERNAL_ERROR",
             "message": f"Unexpected error analyzing connectivity: {str(e)}",
         }
+
+
+async def find_at_position(
+    x: float,
+    y: float,
+    tolerance: float = 0.5,
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    Find all schematic elements at or near a specific position.
+
+    Performs spatial query to find elements within tolerance distance of (x, y).
+    This is useful for understanding what's connected at a specific location,
+    debugging wire routing, or analyzing connectivity from visual/spatial context.
+
+    Searches for:
+    - Component pins (with component reference and net information)
+    - Wire endpoints (start and end points)
+    - Junctions (connection points)
+    - Labels (net labels at position)
+    - Bus entries (bus connection points)
+
+    Args:
+        x: X coordinate in mm
+        y: Y coordinate in mm
+        tolerance: Search radius in mm (default: 0.5mm, suitable for user clicking)
+        ctx: MCP context for progress reporting (optional)
+
+    Returns:
+        Dictionary with success status and grouped element information, or error information
+
+    Examples:
+        >>> # Find everything at a specific coordinate
+        >>> result = await find_at_position(x=100.0, y=100.0)
+        >>> print(f"Found {result['total_count']} elements at position")
+
+        >>> # Find with tighter tolerance for exact matches
+        >>> result = await find_at_position(x=100.0, y=100.0, tolerance=0.1)
+
+        >>> # Inspect what's connected at a junction
+        >>> result = await find_at_position(x=125.4, y=88.9)
+        >>> for pin in result['pins']:
+        ...     print(f"Pin: {pin['component']}.{pin['pin_number']} on net {pin['net']}")
+    """
+    logger.info(f"[MCP] find_at_position called: x={x}, y={y}, tolerance={tolerance}")
+
+    if ctx:
+        await ctx.report_progress(0, 100, f"Searching for elements at ({x}, {y})")
+
+    # Check if schematic is loaded
+    schematic = get_current_schematic()
+    if schematic is None:
+        logger.error("[MCP] No schematic loaded")
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    try:
+        # Helper function to check if point is within tolerance
+        def is_within_tolerance(px: float, py: float) -> bool:
+            import math
+            distance = math.sqrt((px - x) ** 2 + (py - y) ** 2)
+            return distance <= tolerance
+
+        if ctx:
+            await ctx.report_progress(10, 100, "Searching component pins")
+
+        # Search for component pins at position
+        pins_found = []
+        components = list(schematic.components.all())
+        for component in components:
+            pins = schematic.components.get_pins_info(component.reference)
+            if pins:
+                for pin in pins:
+                    if is_within_tolerance(pin.position.x, pin.position.y):
+                        pins_found.append({
+                            "component": component.reference,
+                            "pin_number": pin.number,
+                            "pin_name": pin.name,
+                            "lib_id": component.lib_id,
+                            "position": {"x": pin.position.x, "y": pin.position.y},
+                            "electrical_type": pin.electrical_type.value,
+                            "net": None,  # Will be filled later if netlist is available
+                        })
+
+        if ctx:
+            await ctx.report_progress(30, 100, "Searching wire endpoints")
+
+        # Search for wire endpoints at position
+        wires_found = []
+        wires = list(schematic.wires)
+        for wire in wires:
+            # Check start point
+            if is_within_tolerance(wire.start.x, wire.start.y):
+                wires_found.append({
+                    "uuid": str(wire.uuid),
+                    "endpoint": "start",
+                    "position": {"x": wire.start.x, "y": wire.start.y},
+                    "other_end": {"x": wire.end.x, "y": wire.end.y},
+                    "length": wire.length,
+                    "wire_type": str(wire.wire_type.value) if hasattr(wire.wire_type, 'value') else str(wire.wire_type),
+                })
+            # Check end point
+            if is_within_tolerance(wire.end.x, wire.end.y):
+                wires_found.append({
+                    "uuid": str(wire.uuid),
+                    "endpoint": "end",
+                    "position": {"x": wire.end.x, "y": wire.end.y},
+                    "other_end": {"x": wire.start.x, "y": wire.start.y},
+                    "length": wire.length,
+                    "wire_type": str(wire.wire_type.value) if hasattr(wire.wire_type, 'value') else str(wire.wire_type),
+                })
+
+        if ctx:
+            await ctx.report_progress(50, 100, "Searching junctions")
+
+        # Search for junctions at position
+        junctions_found = []
+        junctions = list(schematic.junctions)
+        for junction in junctions:
+            if is_within_tolerance(junction.position.x, junction.position.y):
+                junctions_found.append({
+                    "uuid": str(junction.uuid),
+                    "position": {"x": junction.position.x, "y": junction.position.y},
+                    "diameter": junction.diameter if hasattr(junction, 'diameter') else 0.0,
+                })
+
+        if ctx:
+            await ctx.report_progress(70, 100, "Searching labels")
+
+        # Search for labels at position
+        labels_found = []
+        labels = list(schematic.labels)
+        for label in labels:
+            if is_within_tolerance(label.position.x, label.position.y):
+                labels_found.append({
+                    "uuid": str(label.uuid),
+                    "text": label.text,
+                    "position": {"x": label.position.x, "y": label.position.y},
+                    "rotation": label.rotation if hasattr(label, 'rotation') else 0.0,
+                    "size": label.size if hasattr(label, 'size') else 1.27,
+                })
+
+        if ctx:
+            await ctx.report_progress(80, 100, "Searching bus entries")
+
+        # Search for bus entries at position
+        bus_entries_found = []
+        bus_entries = list(schematic.bus_entries)
+        for entry in bus_entries:
+            if is_within_tolerance(entry.position.x, entry.position.y):
+                bus_entries_found.append({
+                    "uuid": str(entry.uuid),
+                    "position": {"x": entry.position.x, "y": entry.position.y},
+                    "rotation": entry.rotation,
+                    "size": {"x": entry.size.x, "y": entry.size.y} if entry.size else {"x": 2.54, "y": 2.54},
+                })
+
+        if ctx:
+            await ctx.report_progress(90, 100, "Analyzing connectivity for net names")
+
+        # Try to get net names for pins by running connectivity analysis
+        try:
+            from kicad_sch_api.core.connectivity import ConnectivityAnalyzer
+            analyzer = ConnectivityAnalyzer()
+            nets = analyzer.analyze(schematic, hierarchical=True)
+
+            # Build pin -> net mapping
+            pin_to_net = {}
+            for net in nets:
+                for pin_conn in net.pins:
+                    key = f"{pin_conn.reference}.{pin_conn.pin_number}"
+                    pin_to_net[key] = net.name if net.name else "unnamed"
+
+            # Update pins with net names
+            for pin in pins_found:
+                key = f"{pin['component']}.{pin['pin_number']}"
+                pin['net'] = pin_to_net.get(key, None)
+
+        except Exception as e:
+            logger.warning(f"[MCP] Could not analyze connectivity for net names: {e}")
+            # Continue without net names
+
+        # Calculate totals
+        total_count = (
+            len(pins_found) +
+            len(wires_found) +
+            len(junctions_found) +
+            len(labels_found) +
+            len(bus_entries_found)
+        )
+
+        if ctx:
+            await ctx.report_progress(100, 100, f"Complete: {total_count} elements found")
+
+        logger.info(
+            f"[MCP] Found {total_count} elements at ({x}, {y}) with tolerance {tolerance}: "
+            f"{len(pins_found)} pins, {len(wires_found)} wire endpoints, "
+            f"{len(junctions_found)} junctions, {len(labels_found)} labels, "
+            f"{len(bus_entries_found)} bus entries"
+        )
+
+        return {
+            "success": True,
+            "query": {
+                "x": x,
+                "y": y,
+                "tolerance": tolerance,
+            },
+            "total_count": total_count,
+            "pins": pins_found,
+            "pin_count": len(pins_found),
+            "wires": wires_found,
+            "wire_endpoint_count": len(wires_found),
+            "junctions": junctions_found,
+            "junction_count": len(junctions_found),
+            "labels": labels_found,
+            "label_count": len(labels_found),
+            "bus_entries": bus_entries_found,
+            "bus_entry_count": len(bus_entries_found),
+            "message": f"Found {total_count} element(s) at position ({x}, {y}) with tolerance {tolerance}mm",
+        }
+
+    except Exception as e:
+        logger.error(f"[MCP] Unexpected error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "INTERNAL_ERROR",
+            "message": f"Unexpected error finding elements at position: {str(e)}",
+        }
