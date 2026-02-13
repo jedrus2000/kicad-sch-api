@@ -697,10 +697,10 @@ async def manage_text_boxes(
     ctx: Optional[Context] = None,
 ) -> dict:
     """
-    Manage text boxes (add, update, remove).
+    Manage text boxes (add, update, remove, list).
 
     Args:
-        action: Operation ("add", "update", "remove")
+        action: Operation ("add", "update", "remove", "list")
         text: Text content (required for "add", optional for "update")
         position: Position (required for "add")
         size: Size tuple (required for "add")
@@ -824,11 +824,77 @@ async def manage_text_boxes(
                 "message": f"Failed to remove text box: {str(e)}",
             }
 
+    elif action == "list":
+        try:
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing text boxes")
+
+            # Text boxes are stored in _data["text_boxes"]
+            text_boxes_data = schematic._data.get("text_boxes", [])
+            text_box_list = []
+
+            for text_box in text_boxes_data:
+                # Extract position (stored as dict with x, y)
+                position_data = text_box.get("position", {})
+                position = {
+                    "x": position_data.get("x", 0),
+                    "y": position_data.get("y", 0)
+                } if isinstance(position_data, dict) else {"x": 0, "y": 0}
+
+                # Extract rotation
+                rotation = text_box.get("rotation", 0)
+
+                # Extract size (stored as dict with width, height)
+                size_data = text_box.get("size", {})
+                size = {
+                    "width": size_data.get("width", 0),
+                    "height": size_data.get("height", 0)
+                } if isinstance(size_data, dict) else {"width": 0, "height": 0}
+
+                # Extract text content
+                text_content = text_box.get("text", "")
+
+                # Extract font size
+                font_size = text_box.get("font_size", None)
+
+                # Extract stroke properties
+                stroke_width = text_box.get("stroke_width", 0)
+                stroke_type = text_box.get("stroke_type", "default")
+
+                text_box_data = {
+                    "uuid": str(text_box.get("uuid", "")),
+                    "text": text_content,
+                    "position": position,
+                    "rotation": rotation,
+                    "size": size,
+                    "font_size": font_size,
+                    "stroke_width": stroke_width,
+                    "stroke_type": stroke_type,
+                }
+                text_box_list.append(text_box_data)
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Found {len(text_boxes_data)} text boxes")
+
+            logger.info(f"[MCP] Listed {len(text_boxes_data)} text boxes")
+            return {
+                "success": True,
+                "count": len(text_boxes_data),
+                "text_boxes": text_box_list,
+            }
+        except Exception as e:
+            logger.error(f"[MCP] Error listing text boxes: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "LIST_TEXT_BOXES_ERROR",
+                "message": f"Failed to list text boxes: {str(e)}",
+            }
+
     else:
         return {
             "success": False,
             "error": "INVALID_ACTION",
-            "message": f"Unknown action: {action}. Valid actions: add, update, remove",
+            "message": f"Unknown action: {action}. Valid actions: add, update, remove, list",
         }
 
 
@@ -908,34 +974,43 @@ async def manage_power(
 
     elif action == "list":
         try:
-            # Try to list power nets from schematic
-            power_nets = []
-            # This is a placeholder; actual implementation depends on Python API
-            try:
-                for power_net in schematic.power_nets:  # If method exists
-                    power_nets.append(
-                        {
-                            "name": power_net.name,
-                            "position": {"x": power_net.position.x, "y": power_net.position.y},
-                            "uuid": str(power_net.uuid),
-                        }
-                    )
-            except AttributeError:
-                # Fallback: return empty list if power_nets not available
-                power_nets = []
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing power symbols")
 
-            logger.info(f"[MCP] Listed {len(power_nets)} power nets")
+            # Power symbols are components with reference prefix #PWR or #FLG
+            # and lib_id starting with "power:"
+            all_components = list(schematic.components.all())
+            power_symbols = []
+
+            for component in all_components:
+                # Check if it's a power symbol by reference prefix or lib_id
+                is_power_ref = component.reference.startswith('#PWR') or component.reference.startswith('#FLG')
+                is_power_lib = component.lib_id.startswith('power:')
+
+                if is_power_ref or is_power_lib:
+                    power_symbols.append({
+                        "reference": component.reference,
+                        "power_net": component.value,  # The value field contains the net name (GND, VCC, etc.)
+                        "lib_id": component.lib_id,
+                        "position": {"x": component.position.x, "y": component.position.y},
+                        "uuid": str(component.uuid),
+                    })
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Found {len(power_symbols)} power symbols")
+
+            logger.info(f"[MCP] Listed {len(power_symbols)} power symbols")
             return {
                 "success": True,
-                "count": len(power_nets),
-                "power_nets": power_nets,
+                "count": len(power_symbols),
+                "power_symbols": power_symbols,
             }
         except Exception as e:
-            logger.error(f"[MCP] Error listing power nets: {e}", exc_info=True)
+            logger.error(f"[MCP] Error listing power symbols: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": "LIST_ERROR",
-                "message": f"Failed to list power nets: {str(e)}",
+                "message": f"Failed to list power symbols: {str(e)}",
             }
 
     elif action == "remove":
@@ -1450,13 +1525,13 @@ async def manage_hierarchical_labels(
     ctx: Optional[Context] = None,
 ) -> dict:
     """
-    Manage hierarchical labels (add, remove).
+    Manage hierarchical labels (add, remove, list).
 
     Hierarchical labels connect child schematics to parent sheet pins.
     They enable signal routing through hierarchical sheet boundaries.
 
     Args:
-        action: Operation ("add", "remove")
+        action: Operation ("add", "remove", "list")
         text: Label text (required for "add")
         position: Position (required for "add")
         shape: Label shape - "input", "output", "bidirectional", "tri_state", "passive" (optional)
@@ -1554,11 +1629,47 @@ async def manage_hierarchical_labels(
                 "message": f"Failed to remove hierarchical label: {str(e)}",
             }
 
+    elif action == "list":
+        try:
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing hierarchical labels")
+
+            hierarchical_labels = list(schematic.hierarchical_labels)
+            label_list = []
+
+            for label in hierarchical_labels:
+                label_data = {
+                    "uuid": str(label.uuid),
+                    "text": label.text,
+                    "position": {"x": label.position.x, "y": label.position.y},
+                    "rotation": label.rotation,
+                    "shape": label.shape if hasattr(label, 'shape') else None,
+                    "size": label.size if hasattr(label, 'size') else None,
+                }
+                label_list.append(label_data)
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Found {len(hierarchical_labels)} hierarchical labels")
+
+            logger.info(f"[MCP] Listed {len(hierarchical_labels)} hierarchical labels")
+            return {
+                "success": True,
+                "count": len(hierarchical_labels),
+                "hierarchical_labels": label_list,
+            }
+        except Exception as e:
+            logger.error(f"[MCP] Error listing hierarchical labels: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "LIST_HIERARCHICAL_LABELS_ERROR",
+                "message": f"Failed to list hierarchical labels: {str(e)}",
+            }
+
     else:
         return {
             "success": False,
             "error": "INVALID_ACTION",
-            "message": f"Unknown action: {action}. Valid actions: add, remove",
+            "message": f"Unknown action: {action}. Valid actions: add, remove, list",
         }
 
 

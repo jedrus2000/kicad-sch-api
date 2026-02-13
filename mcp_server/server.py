@@ -274,13 +274,16 @@ async def get_schematic_info() -> dict:
         components = list(schematic.components.all())
         component_refs = [c.reference for c in components]
 
+        # Count unique symbol types (lib_ids)
+        unique_lib_ids = set(c.lib_id for c in components)
+
         info = {
             "success": True,
             "project_name": schematic.title_block['title'],
             "uuid": str(schematic.uuid),
             "component_count": len(components),
             "component_references": component_refs,
-            "lib_symbols_count": len(schematic._data.get('lib_symbols', {})),
+            "lib_symbols_count": len(unique_lib_ids),  # Count of unique symbol types used
         }
 
         logger.info(
