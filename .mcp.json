@@ -2,7 +2,10 @@
   "mcpServers": {
     "kicad-sch-api": {
       "command": "uv",
-      "args": ["run", "kicad-sch-mcp"]
+      "args": ["run", "kicad-sch-mcp"],
+      "env": {
+        "KICAD_SYMBOL_DIR": "/usr/share/kicad/symbols:/big/Customers/ja/micro/kicad_projects/libraries:/home/andrzej/.local/share/kicad/9.0/3rdparty/symbols"
+      }
     }
   }
 }
