@@ -27,6 +27,7 @@ from mcp_server.tools.connectivity_tools import (
     add_label,
     add_wire,
     connect_components,
+    list_wires,
 )
 from mcp_server.tools.consolidated_tools import (
     manage_components,
@@ -314,6 +315,7 @@ mcp.tool()(filter_components)
 
 # Register the connectivity tools from connectivity_tools.py
 mcp.tool()(add_wire)
+mcp.tool()(list_wires)
 mcp.tool()(add_label)
 mcp.tool()(add_junction)
 mcp.tool()(connect_components)

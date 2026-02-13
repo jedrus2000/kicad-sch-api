@@ -793,3 +793,83 @@ async def add_bus_label(
             "error": "INTERNAL_ERROR",
             "message": f"Unexpected error adding bus label: {str(e)}",
         }
+
+
+async def list_wires(
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    List all wires in the current schematic.
+
+    Returns all wires with their endpoints, length, orientation, and UUID.
+    Useful for analyzing circuit connectivity and wire routing.
+
+    Args:
+        ctx: MCP context for progress reporting (optional)
+
+    Returns:
+        Dictionary with success status and list of wires, or error information
+
+    Examples:
+        >>> result = await list_wires()
+        >>> print(f"Found {result['count']} wires")
+        >>> for wire in result['wires']:
+        ...     print(f"Wire {wire['uuid']}: ({wire['start']['x']}, {wire['start']['y']}) -> ({wire['end']['x']}, {wire['end']['y']})")
+    """
+    logger.info("[MCP] list_wires called")
+
+    if ctx:
+        await ctx.report_progress(0, 100, "Listing all wires")
+
+    # Check if schematic is loaded
+    schematic = get_current_schematic()
+    if schematic is None:
+        logger.error("[MCP] No schematic loaded")
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    try:
+        if ctx:
+            await ctx.report_progress(50, 100, "Retrieving wires")
+
+        # Get all wires
+        wires = list(schematic.wires)
+
+        if ctx:
+            await ctx.report_progress(75, 100, f"Converting {len(wires)} wires")
+
+        # Convert to output format
+        wire_list = []
+        for wire in wires:
+            wire_data = {
+                "uuid": str(wire.uuid),
+                "start": {"x": wire.start.x, "y": wire.start.y},
+                "end": {"x": wire.end.x, "y": wire.end.y},
+                "length": wire.length,
+                "is_horizontal": wire.is_horizontal(),
+                "is_vertical": wire.is_vertical(),
+                "wire_type": str(wire.wire_type.value) if hasattr(wire.wire_type, 'value') else str(wire.wire_type),
+                "stroke_width": wire.stroke_width if hasattr(wire, 'stroke_width') else None,
+            }
+            wire_list.append(wire_data)
+
+        if ctx:
+            await ctx.report_progress(100, 100, f"Complete: {len(wires)} wires")
+
+        logger.info(f"[MCP] Listed {len(wires)} wires")
+        return {
+            "success": True,
+            "count": len(wires),
+            "wires": wire_list,
+        }
+
+    except Exception as e:
+        logger.error(f"[MCP] Unexpected error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "INTERNAL_ERROR",
+            "message": f"Unexpected error listing wires: {str(e)}",
+        }
