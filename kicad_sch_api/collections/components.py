@@ -352,7 +352,17 @@ class Component:
     # Pin access
     @property
     def pins(self) -> List[SchematicPin]:
-        """List of component pins."""
+        """List of component pins (lazy loaded from library on first access).
+
+        If pins are not yet loaded from the library, this property will
+        automatically call update_from_library() to load them. This provides
+        transparent access to pin data without requiring manual loading.
+
+        Returns:
+            List of SchematicPin objects for this component.
+        """
+        if not self._data.pins:
+            self.update_from_library()
         return self._data.pins
 
     @property
@@ -1551,6 +1561,11 @@ class ComponentCollection(BaseCollection[Component]):
             f"[PIN_DISCOVERY] Retrieved symbol definition for {reference}: "
             f"{len(symbol_def.pins)} pins"
         )
+
+        # Step 2.5: Trigger lazy loading to ensure component.pins is populated
+        # This is needed for component.get_pin_position() to work correctly
+        _ = component.pins
+        logger.debug(f"[PIN_DISCOVERY] Lazy loading triggered, component has {len(component.pins)} pins")
 
         # Step 3: Build PinInfo list with absolute positions
         pins_info = []

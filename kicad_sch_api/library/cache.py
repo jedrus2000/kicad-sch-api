@@ -740,19 +740,30 @@ class SymbolLibraryCache:
             # Extract the library name and symbol name for resolution
             library_name, symbol_name = lib_id.split(":", 1)
 
-            # Check if this symbol extends another symbol
+            # Check if this symbol extends another symbol (recursive resolution)
             extends_symbol = self._check_extends_directive(symbol_data)
             logger.debug(f"🔧 CACHE: Symbol {lib_id} extends: {extends_symbol}")
 
-            # If this symbol extends another, we need to resolve it
-            if extends_symbol:
+            # Recursively resolve extends chain (e.g., A extends B extends C)
+            max_depth = 10  # Prevent infinite loops
+            depth = 0
+            while extends_symbol and depth < max_depth:
+                logger.debug(f"🔧 CACHE: Resolving extends level {depth + 1}: {extends_symbol}")
                 resolved_symbol_data = self._resolve_extends_relationship(
                     symbol_data, extends_symbol, library_path, library_name
                 )
                 if resolved_symbol_data:
                     symbol_data = resolved_symbol_data
-                    extends_symbol = None  # Clear extends after resolution
-                    logger.debug(f"🔧 CACHE: Resolved extends for {lib_id}")
+                    # Check if the merged result still has an extends directive
+                    extends_symbol = self._check_extends_directive(symbol_data)
+                    depth += 1
+                    if extends_symbol:
+                        logger.debug(f"🔧 CACHE: Merged symbol still extends: {extends_symbol}")
+                    else:
+                        logger.debug(f"🔧 CACHE: Resolved all extends for {lib_id} (depth={depth})")
+                else:
+                    # Failed to resolve, break loop
+                    extends_symbol = None
 
             # Extract symbol information
             result = {
