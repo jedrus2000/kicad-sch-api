@@ -1560,3 +1560,76 @@ async def manage_hierarchical_labels(
             "error": "INVALID_ACTION",
             "message": f"Unknown action: {action}. Valid actions: add, remove",
         }
+
+
+# ============================================================================
+# 10. MANAGE JUNCTIONS (list)
+# ============================================================================
+
+
+async def manage_junctions(
+    action: str,
+    ctx: Optional[Context] = None,
+) -> dict:
+    """
+    Manage junctions (list only).
+
+    Junctions are connection points where multiple wires meet in a schematic.
+
+    Args:
+        action: Operation ("list")
+        ctx: MCP context (optional)
+
+    Returns:
+        Dictionary with junction data or error
+    """
+    logger.info(f"[MCP] manage_junctions called: action={action}")
+
+    schematic = get_current_schematic()
+    if schematic is None:
+        return {
+            "success": False,
+            "error": "NO_SCHEMATIC_LOADED",
+            "message": "No schematic is currently loaded",
+        }
+
+    if action == "list":
+        try:
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing junctions")
+
+            junctions = list(schematic.junctions)
+            junction_list = []
+
+            for junction in junctions:
+                junction_data = {
+                    "uuid": str(junction.uuid),
+                    "position": {"x": junction.position.x, "y": junction.position.y},
+                    "diameter": junction.diameter,
+                    "color": list(junction.color) if junction.color else [0, 0, 0, 0],
+                }
+                junction_list.append(junction_data)
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Found {len(junctions)} junctions")
+
+            logger.info(f"[MCP] Listed {len(junctions)} junctions")
+            return {
+                "success": True,
+                "count": len(junctions),
+                "junctions": junction_list,
+            }
+        except Exception as e:
+            logger.error(f"[MCP] Error listing junctions: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "LIST_JUNCTIONS_ERROR",
+                "message": f"Failed to list junctions: {str(e)}",
+            }
+
+    else:
+        return {
+            "success": False,
+            "error": "INVALID_ACTION",
+            "message": f"Unknown action: {action}. Valid actions: list",
+        }
