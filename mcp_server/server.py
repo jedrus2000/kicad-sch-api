@@ -153,14 +153,14 @@ async def load_schematic(file_path: str) -> dict:
         component_count = len(list(schematic.components.all()))
 
         logger.info(
-            f"[MCP] Loaded schematic: {schematic.title_block.title} "
+            f"[MCP] Loaded schematic: {schematic.title_block['title']} "
             f"({component_count} components)"
         )
         return {
             "success": True,
             "message": f"Loaded schematic: {path.name}",
             "file_path": str(path),
-            "project_name": schematic.title_block.title,
+            "project_name": schematic.title_block['title'],
             "uuid": str(schematic.uuid),
             "component_count": component_count,
         }
@@ -271,11 +271,11 @@ async def get_schematic_info() -> dict:
 
         info = {
             "success": True,
-            "project_name": schematic.title_block.title,
+            "project_name": schematic.title_block['title'],
             "uuid": str(schematic.uuid),
             "component_count": len(components),
             "component_references": component_refs,
-            "lib_symbols_count": len(schematic.lib_symbols),
+            "lib_symbols_count": len(schematic._data.get('lib_symbols', {})),
         }
 
         logger.info(
