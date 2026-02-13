@@ -647,12 +647,24 @@ class SymbolLibraryCache:
         library_name, symbol_name = lib_id.split(":", 1)
         logger.debug(f"🔧 LOAD: Library: {library_name}, Symbol: {symbol_name}")
 
-        if library_name not in self._library_index:
+        # Try to find the library, handling PCM-prefixed names
+        library_path = None
+        if library_name in self._library_index:
+            library_path = self._library_index[library_name]
+        elif library_name.startswith("PCM_"):
+            # Try without the PCM_ prefix (KiCAD Package Manager convention)
+            alt_library_name = library_name[4:]  # Remove "PCM_" prefix
+            if alt_library_name in self._library_index:
+                logger.debug(f"🔧 LOAD: Found library without PCM prefix: {alt_library_name}")
+                library_path = self._library_index[alt_library_name]
+                # Update lib_id to use the non-prefixed library name
+                lib_id = f"{alt_library_name}:{symbol_name}"
+
+        if library_path is None:
             logger.warning(f"🔧 LOAD: Library not found: {library_name}")
             logger.debug(f"🔧 LOAD: Available libraries: {list(self._library_index.keys())}")
             return None
 
-        library_path = self._library_index[library_name]
         logger.debug(f"🔧 LOAD: Library path: {library_path}")
         return self._load_symbol_from_library(library_path, lib_id)
 
