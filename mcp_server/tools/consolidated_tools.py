@@ -551,10 +551,10 @@ async def manage_labels(
     ctx: Optional[Context] = None,
 ) -> dict:
     """
-    Manage labels (add, remove).
+    Manage labels (add, remove, list).
 
     Args:
-        action: Operation ("add", "remove")
+        action: Operation ("add", "remove", "list")
         text: Label text (required for "add")
         position: Position (required for "add")
         rotation: Rotation in degrees (optional)
@@ -633,11 +633,51 @@ async def manage_labels(
                 "message": f"Failed to remove label: {str(e)}",
             }
 
+    elif action == "list":
+        try:
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing labels")
+
+            # Get all labels
+            labels = list(schematic.labels)
+
+            if ctx:
+                await ctx.report_progress(50, 100, f"Converting {len(labels)} labels")
+
+            # Convert to output format
+            label_list = []
+            for label in labels:
+                label_data = {
+                    "uuid": str(label.uuid),
+                    "text": label.text,
+                    "position": {"x": label.position.x, "y": label.position.y},
+                    "rotation": label.rotation,
+                    "size": label.size if hasattr(label, 'size') else None,
+                }
+                label_list.append(label_data)
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Complete: {len(labels)} labels")
+
+            logger.info(f"[MCP] Listed {len(labels)} labels")
+            return {
+                "success": True,
+                "count": len(labels),
+                "labels": label_list,
+            }
+        except Exception as e:
+            logger.error(f"[MCP] Error listing labels: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "LIST_ERROR",
+                "message": f"Failed to list labels: {str(e)}",
+            }
+
     else:
         return {
             "success": False,
             "error": "INVALID_ACTION",
-            "message": f"Unknown action: {action}. Valid actions: add, remove",
+            "message": f"Unknown action: {action}. Valid actions: add, remove, list",
         }
 
 
