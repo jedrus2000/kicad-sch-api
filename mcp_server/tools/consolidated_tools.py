@@ -1295,10 +1295,10 @@ async def manage_global_labels(
     ctx: Optional[Context] = None,
 ) -> dict:
     """
-    Manage global labels (add, remove).
+    Manage global labels (add, remove, list).
 
     Args:
-        action: Operation ("add", "remove")
+        action: Operation ("add", "remove", "list")
         text: Label text (required for "add")
         position: Position (required for "add")
         shape: Label shape (optional)
@@ -1331,11 +1331,11 @@ async def manage_global_labels(
             if ctx:
                 await ctx.report_progress(0, 100, f"Adding global label: {text}")
 
+            # Note: rotation parameter not supported by add_global_label API
             label_uuid = schematic.add_global_label(
                 text=text,
                 position=position,
                 shape=shape,
-                rotation=rotation,
             )
 
             if ctx:
@@ -1384,11 +1384,53 @@ async def manage_global_labels(
                 "message": f"Failed to remove global label: {str(e)}",
             }
 
+    elif action == "list":
+        try:
+            if ctx:
+                await ctx.report_progress(0, 100, "Listing global labels")
+
+            # Global labels are stored in _data["global_label"] array
+            global_labels_data = schematic._data.get("global_label", [])
+            label_list = []
+
+            for label in global_labels_data:
+                # Extract position from 'at' field
+                at_data = label.get("at", [0, 0, 0])
+                position = {"x": at_data[0], "y": at_data[1]}
+                rotation = at_data[2] if len(at_data) > 2 else 0
+
+                label_data = {
+                    "uuid": str(label.get("uuid", "")),
+                    "text": label.get("text", ""),
+                    "position": position,
+                    "rotation": rotation,
+                    "shape": label.get("shape", None),
+                    "size": label.get("effects", {}).get("font", {}).get("size", None),
+                }
+                label_list.append(label_data)
+
+            if ctx:
+                await ctx.report_progress(100, 100, f"Found {len(global_labels_data)} global labels")
+
+            logger.info(f"[MCP] Listed {len(global_labels_data)} global labels")
+            return {
+                "success": True,
+                "count": len(global_labels_data),
+                "global_labels": label_list,
+            }
+        except Exception as e:
+            logger.error(f"[MCP] Error listing global labels: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "LIST_GLOBAL_LABELS_ERROR",
+                "message": f"Failed to list global labels: {str(e)}",
+            }
+
     else:
         return {
             "success": False,
             "error": "INVALID_ACTION",
-            "message": f"Unknown action: {action}. Valid actions: add, remove",
+            "message": f"Unknown action: {action}. Valid actions: add, remove, list",
         }
 
 
