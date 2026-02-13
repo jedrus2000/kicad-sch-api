@@ -143,9 +143,10 @@ def targeted_search_directories() -> List[Path]:
             # Search for .kicad_sym files up to 5 levels deep
             for sym_file in search_dir.rglob("*.kicad_sym"):
                 results.add(sym_file.parent)
+                # why ????
                 # Limit depth to avoid going too deep
-                if len(sym_file.parts) - len(search_dir.parts) > 5:
-                    continue
+                #if len(sym_file.parts) - len(search_dir.parts) > 5:
+                #    continue
         except PermissionError:
             print(f"    ⚠️  Permission denied")
             continue

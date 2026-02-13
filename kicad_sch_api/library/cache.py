@@ -1225,7 +1225,7 @@ class SymbolLibraryCache:
 
             # If it's a directory, check if it contains any .kicad_sym files
             if path.is_dir():
-                return any(path.glob("*.kicad_sym"))
+                return any(path.rglob("*.kicad_sym"))
 
             return False
 
